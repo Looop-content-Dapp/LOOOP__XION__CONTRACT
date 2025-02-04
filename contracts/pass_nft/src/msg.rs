@@ -8,7 +8,9 @@ use cw721_base_soulbound::CustomMsg;
 pub struct InstantiateMsg {
     pub name: String,
     pub symbol: String,
-    pub artist: String,
+    pub artist: Addr,
+    pub minter: Addr,
+    pub collection_info: String,
     pub pass_price: u128,
     pub pass_duration: u64,
     pub grace_period: u64,
@@ -18,7 +20,7 @@ pub struct InstantiateMsg {
 // Custom Pass messages extending the base contract
 #[cw_serde]
 pub enum PassMsg {
-    MintPass { token_id: String },
+    MintPass {owner_address: String},
     RenewPass { token_id: String },
     BurnExpiredPass { token_id: String },
 }
@@ -31,6 +33,13 @@ pub type ExecuteMsg = cw721_base_soulbound::ExecuteMsg<PassExtension, PassMsg>;
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum PassQuery {
+
+#[returns(PassResponse)]
+ GetUserPass {
+symbol: String, 
+owner: String
+ },
+
 #[returns(ValidityResponse)]
 CheckValidity { token_id: String },
 
@@ -54,14 +63,26 @@ pub struct ValidityResponse {
 }
 
 #[cw_serde]
+pub struct PassResponse {
+    pub collection_name: String,
+    pub contract_address: Addr,
+    pub token_id: String,
+    pub owner: String,
+    pub is_valid: bool,
+    pub expires_at: Timestamp,
+}
+
+#[cw_serde]
 pub struct ConfigResponse {
-    pub name: String,
-    pub symbol: String,
-    pub artist: String,
-    pub pass_price: u128,
+    pub name: String, 
+    pub symbol: String, 
+    pub artist: Addr, 
+    pub minter: Addr,
+    pub collection_info: String, 
+    pub pass_price: u128, 
     pub pass_duration: u64,
-    pub grace_period: u64,
-    pub payment_address: String,
+    pub grace_period: u64, 
+    pub payment_address: Addr, 
 }
 
 #[cw_serde]

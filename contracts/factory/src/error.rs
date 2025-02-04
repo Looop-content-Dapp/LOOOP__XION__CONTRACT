@@ -13,6 +13,12 @@ pub enum ContractError {
     #[error("Invalid symbol format. Must be uppercase and no spaces")]
     InvalidSymbol {},
 
+    #[error("No data in reply")]
+    InvalidSymbolA {},
+
+    #[error("Invalid UTF-8")]
+    InvalidSymbolB {},
+
     #[error("Symbol is already taken")]
     SymbolAlreadyTaken {},
 

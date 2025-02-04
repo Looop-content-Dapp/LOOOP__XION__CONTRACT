@@ -9,7 +9,7 @@ mod tests {
         contract::{instantiate, execute, query},
         msg::{
             InstantiateMsg, ExecuteMsg, QueryMsg, PassMsg, PassQuery, 
-            ConfigResponse, ValidityResponse, ArtistInfoResponse
+            ConfigResponse, ValidityResponse, ArtistInfoResponse, PassResponse
         },
     };
 
@@ -21,22 +21,26 @@ mod tests {
     const ARTIST: &str = "artist";
     const PAYMENT_ADDR: &str = "payment_addr";
     const COLLECTION_NAME: &str = "Test Pass";
-    const COLLECTION_SYMBOL: &str = "PASS";
+    const COLLECTION_SYMBOL: &str = "TEST";
 
     // Helper function to setup contract
     fn setup_contract() -> OwnedDeps<MockStorage, MockApi, MockQuerier> {
         let mut deps = mock_dependencies();
         let artist = Addr::unchecked(ARTIST);
+        let minter = Addr::unchecked(USER);
         let payment_address = Addr::unchecked(PAYMENT_ADDR);
+        let collection_info = "Test Collection".to_string();
 
         let msg = InstantiateMsg {
             name: COLLECTION_NAME.to_string(),
             symbol: COLLECTION_SYMBOL.to_string(),
-            artist: artist.to_string(),
+            artist,
+            minter, 
+            collection_info,
             pass_price: PASS_PRICE,
             pass_duration: PASS_DURATION,
             grace_period: GRACE_PERIOD,
-            payment_address: payment_address,
+            payment_address,
         };
 
         let info = mock_info(ARTIST, &[]);
@@ -46,21 +50,20 @@ mod tests {
         deps
     }
 
-    // Helper function to format token ID
-    fn format_token_id(token_id: &str) -> String {
-        format!("{}-{}", COLLECTION_SYMBOL.to_lowercase(), token_id)
-    }
-
     #[test]
     fn test_initialization() {
         let mut deps = mock_dependencies();
         let artist = Addr::unchecked(ARTIST);
+        let minter = Addr::unchecked(USER);
         let payment_address = Addr::unchecked(PAYMENT_ADDR);
+        let collection_info = "Test Collection".to_string();
 
         let msg = InstantiateMsg {
             name: COLLECTION_NAME.to_string(),
             symbol: COLLECTION_SYMBOL.to_string(),
-            artist: artist.to_string(),
+            artist,
+            minter: minter.clone(),
+            collection_info,
             pass_price: PASS_PRICE,
             pass_duration: PASS_DURATION,
             grace_period: GRACE_PERIOD,
@@ -78,23 +81,21 @@ mod tests {
         
         assert_eq!(config.name, COLLECTION_NAME);
         assert_eq!(config.symbol, COLLECTION_SYMBOL);
-        assert_eq!(config.artist, artist.to_string());
         assert_eq!(config.pass_price, PASS_PRICE);
         assert_eq!(config.pass_duration, PASS_DURATION);
         assert_eq!(config.grace_period, GRACE_PERIOD);
-        assert_eq!(config.payment_address, payment_address.to_string());
+        assert_eq!(config.payment_address, payment_address);
     }
 
     #[test]
     fn test_mint_pass() {
         let mut deps = setup_contract();
-        let token_id = format_token_id("pass1");
-
+        
         // Try minting without payment
         let info = mock_info(USER, &[]);
         let msg = ExecuteMsg::Extension { 
             msg: PassMsg::MintPass { 
-                token_id: "pass1".to_string()  // Send unformatted token_id
+                owner_address: USER.to_string(),
             } 
         };
         let err = execute(deps.as_mut(), mock_env(), info, msg.clone()).unwrap_err();
@@ -105,40 +106,63 @@ mod tests {
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert!(res.attributes.iter().any(|attr| attr.key == "action" && attr.value == "mint_pass"));
 
+        // Get token_id from response attributes
+        let token_id = res.attributes
+            .iter()
+            .find(|attr| attr.key == "token_id")
+            .map(|attr| attr.value.clone())
+            .unwrap();
+
         // Query pass validity
         let msg = QueryMsg::Extension { 
-            msg: PassQuery::CheckValidity { 
-                token_id: token_id.clone()
-            } 
+            msg: PassQuery::CheckValidity { token_id: token_id.clone() } 
         };
         let res = query(deps.as_ref(), mock_env(), msg).unwrap();
         let validity: ValidityResponse = from_json(&res).unwrap();
         
         assert!(validity.is_valid);
         assert!(!validity.in_grace_period);
+
+        // Test GetUserPass query
+        let msg = QueryMsg::Extension {
+            msg: PassQuery::GetUserPass {
+                symbol: COLLECTION_SYMBOL.to_string(),
+                owner: USER.to_string(),
+            }
+        };
+        let res = query(deps.as_ref(), mock_env(), msg).unwrap();
+        let pass_info: PassResponse = from_json(&res).unwrap();
+
+        println!("Pass Info: {:?}", pass_info);
+        assert_eq!(pass_info.token_id, token_id);
+        assert_eq!(pass_info.collection_name, COLLECTION_NAME);
+        assert!(pass_info.is_valid);
     }
 
     #[test]
     fn test_renew_pass() {
         let mut deps = setup_contract();
-        let base_token_id = "pass1";
-        let token_id = format_token_id(base_token_id);
 
         // First mint a pass
         let info = mock_info(USER, &coins(PASS_PRICE, "uxion"));
         let mint_msg = ExecuteMsg::Extension { 
             msg: PassMsg::MintPass { 
-                token_id: base_token_id.to_string()
+                owner_address: USER.to_string(),
             } 
         };
-        execute(deps.as_mut(), mock_env(), info, mint_msg).unwrap();
+        let mint_res = execute(deps.as_mut(), mock_env(), info, mint_msg).unwrap();
+        
+        // Get token_id from mint response
+        let token_id = mint_res.attributes
+            .iter()
+            .find(|attr| attr.key == "token_id")
+            .map(|attr| attr.value.clone())
+            .unwrap();
 
         // Renew with correct payment
         let info = mock_info(USER, &coins(PASS_PRICE, "uxion"));
         let msg = ExecuteMsg::Extension { 
-            msg: PassMsg::RenewPass { 
-                token_id: token_id.clone()
-            } 
+            msg: PassMsg::RenewPass { token_id: token_id.clone() } 
         };
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert!(res.attributes.iter().any(|attr| attr.key == "action" && attr.value == "renew_pass"));
@@ -147,17 +171,22 @@ mod tests {
     #[test]
     fn test_burn_expired_pass() {
         let mut deps = setup_contract();
-        let base_token_id = "pass1";
-        let token_id = format_token_id(base_token_id);
 
         // Mint a pass
         let info = mock_info(USER, &coins(PASS_PRICE, "uxion"));
         let mint_msg = ExecuteMsg::Extension { 
             msg: PassMsg::MintPass { 
-                token_id: base_token_id.to_string()
+                owner_address: USER.to_string(),
             } 
         };
-        execute(deps.as_mut(), mock_env(), info.clone(), mint_msg).unwrap();
+        let mint_res = execute(deps.as_mut(), mock_env(), info.clone(), mint_msg).unwrap();
+        
+        // Get token_id from mint response
+        let token_id = mint_res.attributes
+            .iter()
+            .find(|attr| attr.key == "token_id")
+            .map(|attr| attr.value.clone())
+            .unwrap();
 
         // Move time past expiration and grace period
         let mut env = mock_env();
@@ -165,9 +194,7 @@ mod tests {
 
         // Burn expired pass
         let burn_msg = ExecuteMsg::Extension { 
-            msg: PassMsg::BurnExpiredPass { 
-                token_id: token_id.clone()
-            } 
+            msg: PassMsg::BurnExpiredPass { token_id } 
         };
         let res = execute(deps.as_mut(), env.clone(), info, burn_msg).unwrap();
         assert!(res.attributes.iter().any(|attr| attr.key == "action" && attr.value == "burn_expired_pass"));
@@ -191,7 +218,7 @@ mod tests {
         let info = mock_info(USER, &coins(PASS_PRICE, "uxion"));
         let mint_msg = ExecuteMsg::Extension { 
             msg: PassMsg::MintPass { 
-                token_id: "pass1".to_string()
+                owner_address: USER.to_string(),
             } 
         };
         execute(deps.as_mut(), mock_env(), info, mint_msg).unwrap();

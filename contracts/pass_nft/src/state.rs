@@ -8,6 +8,8 @@ use crate::msg::PassMsg;
 
 // Define the main configuration item
 pub const CONFIG: Item<Config> = Item::new("config");
+pub const TOKEN_ID_COUNTER: Item<u64> = Item::new("token_id_counter");
+
 
 // Define metadata for NFTs
 #[cw_serde]
@@ -24,13 +26,15 @@ pub type Contract<'a> = cw721_base_soulbound::Cw721Contract<'a, PassExtension, P
 /// Contract configuration
 #[cw_serde]
 pub struct Config {
-    pub name: String, // Collection name
-    pub symbol: String, // Collection symbol
-    pub artist: Addr,   // Artist's address
-    pub pass_price: u128, // Cost to mint/renew a pass in uxion
-    pub pass_duration: u64,// Duration of the pass in seconds
-    pub grace_period: u64, // Grace period after expiry
-    pub payment_address: Addr, // Address receiving payments
+    pub name: String, 
+    pub symbol: String, 
+    pub artist: Addr, 
+    pub minter: Addr,
+    pub collection_info: String, 
+    pub pass_price: u128, 
+    pub pass_duration: u64,
+    pub grace_period: u64, 
+    pub payment_address: Addr, 
 }
 
 /// Additional helpers for managing PassExtension logic

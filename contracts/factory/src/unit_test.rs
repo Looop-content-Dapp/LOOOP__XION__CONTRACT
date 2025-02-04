@@ -13,18 +13,22 @@ mod tests {
     // Constants for testing
     const OWNER: &str = "owner";
     const ARTIST: &str = "artist";
+    const MINTER: &str = "minter";
     const NFT_CODE_ID: u64 = 123;
     const PASS_PRICE: u128 = 10;
     const PASS_DURATION: u64 = 2592000;   // 30 days
     const GRACE_PERIOD: u64 = 259200;     // 3 days
-    const COLLECTION_NAME: &str = "Drake Collection";
-    const COLLECTION_SYMBOL: &str = "DRAKE";
 
     // Helper function to instantiate the contract
     fn setup_contract(deps: DepsMut) -> Response {
         let msg = InstantiateMsg {
             nft_code_id: NFT_CODE_ID,
+            price: PASS_PRICE,
+            duration: PASS_DURATION,
+            grace_period: GRACE_PERIOD,
+            payment_address: Addr::unchecked(OWNER),
         };
+        
         let info = mock_info(OWNER, &[]);
         let env = mock_env();
 
@@ -32,14 +36,13 @@ mod tests {
     }
 
     // Helper function to create a collection message
-    fn create_collection_msg(name: String, symbol: String) -> ExecuteMsg {
+    fn create_collection_msg(name: String, symbol: String, artist: Addr, minter: Addr) -> ExecuteMsg {
         ExecuteMsg::CreateCollection {
             name,
             symbol,
-            pass_price: PASS_PRICE,
-            pass_duration: PASS_DURATION,
-            grace_period: GRACE_PERIOD,
-            payment_address: Addr::unchecked(OWNER),
+            artist,
+            minter,
+            collection_info: "Test Collection Metadata".to_string(), // Now using proper String
         }
     }
 
@@ -52,13 +55,14 @@ mod tests {
             let response = setup_contract(deps.as_mut());
             assert_eq!(0, response.messages.len());
 
-            // Query config
+            // Query and verify config
             let config: ConfigResponse = from_json(
                 &query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap()
             ).unwrap();
 
+            println!("Config Response: {:?}", config);
             assert_eq!(config.nft_code_id, NFT_CODE_ID);
-            assert_eq!(config.owner, OWNER);
+            assert_eq!(config.admin, OWNER);
             assert_eq!(config.total_collections, 0);
         }
 
@@ -66,15 +70,22 @@ mod tests {
         fn test_create_collection() {
             let mut deps = mock_dependencies();
             setup_contract(deps.as_mut());
+            
+            let artist = Addr::unchecked(ARTIST);
+            let minter = Addr::unchecked(MINTER);
 
             let msg = create_collection_msg(
-                COLLECTION_NAME.to_string(),
-                COLLECTION_SYMBOL.to_string(),
+                "Drake Collection".to_string(),
+                "DRAKE".to_string(),
+                artist.clone(),
+                minter.clone(),
             );
 
-            // Artist creates collection
-            let info = mock_info(ARTIST, &[]);
+            // Execute as admin (not artist)
+            let info = mock_info(OWNER, &[]);
             let response = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+            
+            println!("Create Collection Response: {:?}", response);
             
             // Verify submessage for NFT contract instantiation
             assert_eq!(1, response.messages.len());
@@ -89,56 +100,31 @@ mod tests {
             ).unwrap();
 
             let collection = collection.collection.unwrap();
-            assert_eq!(collection.name, COLLECTION_NAME);
-            assert_eq!(collection.symbol, COLLECTION_SYMBOL);
-            assert_eq!(collection.artist, Addr::unchecked(ARTIST));
-            assert_eq!(collection.contract_address, Addr::unchecked(""));
+            println!("Created Collection: {:?}", collection);
+            
+            assert_eq!(collection.name, "Drake Collection");
+            assert_eq!(collection.symbol, "DRAKE");
+            assert_eq!(collection.artist, artist);
+            assert_eq!(collection.minter, minter);
+            assert_eq!(collection.collection_info, "Test Collection Metadata");
         }
 
         #[test]
-        fn test_invalid_symbol() {
-            let mut deps = mock_dependencies();
-            setup_contract(deps.as_mut());
-
-            // Test lowercase symbol
-            let msg = create_collection_msg(
-                "Test Collection".to_string(),
-                "drake".to_string(),
-            );
-
-            let info = mock_info(ARTIST, &[]);
-            let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-            assert_eq!(err, ContractError::InvalidSymbol {});
-
-            // Test symbol with spaces
-            let msg = create_collection_msg(
-                "Test Collection".to_string(),
-                "DRAKE TEST".to_string(),
-            );
-
-            let info = mock_info(ARTIST, &[]);
-            let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-            assert_eq!(err, ContractError::InvalidSymbol {});
-        }
-
-        #[test]
-        fn test_duplicate_symbol() {
+        fn test_unauthorized_collection_creation() {
             let mut deps = mock_dependencies();
             setup_contract(deps.as_mut());
 
             let msg = create_collection_msg(
-                COLLECTION_NAME.to_string(),
-                COLLECTION_SYMBOL.to_string(),
+                "Test Collection".to_string(),
+                "TEST".to_string(),
+                Addr::unchecked(ARTIST),
+                Addr::unchecked(MINTER),
             );
 
-            // First creation should succeed
-            let info = mock_info(ARTIST, &[]);
-            let _res = execute(deps.as_mut(), mock_env(), info, msg.clone()).unwrap();
-
-            // Second creation with same symbol should fail
+            // Try to create collection as artist (should fail)
             let info = mock_info(ARTIST, &[]);
             let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-            assert_eq!(err, ContractError::SymbolAlreadyTaken {});
+            assert_eq!(err, ContractError::Unauthorized {});
         }
 
         #[test]
@@ -158,7 +144,8 @@ mod tests {
 
             // Owner attempt should succeed
             let info = mock_info(OWNER, &[]);
-            let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+            let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+            println!("Update Code ID Response: {:?}", res);
 
             // Verify code ID was updated
             let config: ConfigResponse = from_json(

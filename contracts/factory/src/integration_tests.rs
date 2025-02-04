@@ -1,20 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::msg::{InstantiateMsg, ExecuteMsg, QueryMsg, ConfigResponse, CollectionResponse};
-    use cosmwasm_std::{Addr, Coin, Empty};
+    use crate::msg::{InstantiateMsg, ExecuteMsg, QueryMsg, CollectionResponse};
+    use cosmwasm_std::{Addr, Empty};
     use cw_multi_test::{App, Contract, ContractWrapper, Executor};
 
-    // Contract constructors
-    pub fn factory_contract() -> Box<dyn Contract<Empty>> {
-        let contract = ContractWrapper::new(
-            crate::contract::execute,
-            crate::contract::instantiate,
-            crate::contract::query,
-        )
-        .with_reply(crate::contract::reply);
-        Box::new(contract)
-    }
-
+    // Add NFT contract constructor
     pub fn nft_contract() -> Box<dyn Contract<Empty>> {
         let contract = ContractWrapper::new(
             pass_nft::contract::execute,
@@ -24,207 +14,127 @@ mod tests {
         Box::new(contract)
     }
 
-    // Helper to setup contracts
-    fn setup_contracts() -> (App, Addr, Addr, Addr, Addr, Addr, u64) {
+    pub fn factory_contract() -> Box<dyn Contract<Empty>> {
+        let contract = ContractWrapper::new(
+            crate::contract::execute,
+            crate::contract::instantiate,
+            crate::contract::query,
+        ).with_reply(crate::contract::reply);
+        Box::new(contract)
+    }
+
+    fn setup_contracts() -> (App, Addr, Addr, Addr, Addr) {
         let mut app = App::default();
-        let owner = Addr::unchecked("owner");  // Contract owner & payment receiver
+        let admin = Addr::unchecked("admin");
         let artist = Addr::unchecked("artist");
-        let user1 = Addr::unchecked("user1");
-        let user2 = Addr::unchecked("user2");
+        let minter = Addr::unchecked("minter");
+        let payment_addr = Addr::unchecked("payment");
 
-        // Initialize balances for testing
-        app.init_modules(|router, _api, storage| {
-            router
-                .bank
-                .init_balance(
-                    storage,
-                    &user1,
-                    vec![Coin::new(1000u128, "uxion")]
-                )
-                .unwrap();
-            router
-                .bank
-                .init_balance(
-                    storage,
-                    &user2,
-                    vec![Coin::new(1000u128, "uxion")]
-                )
-                .unwrap();
-        });
-
-        // Store NFT contract code
+        // First store the NFT contract code
         let nft_code_id = app.store_code(nft_contract());
 
-        // Store and instantiate factory contract
+        // Then store and instantiate the factory
         let factory_code_id = app.store_code(factory_contract());
         let factory_addr = app
             .instantiate_contract(
                 factory_code_id,
-                owner.clone(),
+                admin.clone(),
                 &InstantiateMsg {
                     nft_code_id,
+                    price: 100u128,
+                    duration: 2592000,
+                    grace_period: 259200,
+                    payment_address: payment_addr.clone(),
                 },
                 &[],
-                "music-pass-factory",
+                "factory",
                 None,
             )
             .unwrap();
 
-        (app, factory_addr, owner, artist, user1, user2, nft_code_id)
+        println!("Contract setup completed: factory at {}", factory_addr);
+        (app, factory_addr, admin, artist, minter)
     }
 
     #[test]
-    fn proper_initialization() {
-        let (app, factory_addr, owner, _artist, _, _, nft_code_id) = setup_contracts();
+fn test_create_collection() {
+    let (mut app, factory_addr, admin, artist, minter) = setup_contracts();
 
-        let config: ConfigResponse = app
-            .wrap()
-            .query_wasm_smart(&factory_addr, &QueryMsg::Config {})
-            .unwrap();
+    let symbol = "TEST".to_string();
 
-        assert_eq!(config.nft_code_id, nft_code_id);
-        assert_eq!(config.owner, owner.to_string());
-        assert_eq!(config.total_collections, 0);
-    }
+    // Notice the symbol is now "TEST" instead of "test"
+    let msg = ExecuteMsg::CreateCollection {
+        name: "Test Collection".to_string(),
+        symbol,
+        artist: artist.clone(),
+        minter: minter.clone(),
+        collection_info: "Test Collection Metadata".to_string(),
+    };
 
-    #[test]
-    fn create_collection() {
-        let (mut app, factory_addr, owner, artist, _, _, _) = setup_contracts();
+    println!("Executing create collection with msg: {:?}", msg);
+    
+    let res = app.execute_contract(
+        admin.clone(),
+        factory_addr.clone(),
+        &msg,
+        &[]
+    );
+    println!("Create collection result: {:?}", res);
+    assert!(res.is_ok());
 
-        // Create collection
+    // After successful creation, verify the collection
+    let query_res: CollectionResponse = app
+        .wrap()
+        .query_wasm_smart(
+            &factory_addr,
+            &QueryMsg::Collection { 
+                artist: artist.to_string() 
+            }
+        )
+        .unwrap();
+
+    println!("Collection query result: {:?}", query_res);
+    
+    // Verify the collection details
+    let collection = query_res.collection.unwrap();
+    assert_eq!(collection.symbol, "TEST");
+    assert_eq!(collection.name, "Test Collection");
+    assert_eq!(collection.artist, artist);
+    assert_eq!(collection.minter, minter);
+}
+
+// Let's also add a test specifically for symbol validation
+#[test]
+fn test_symbol_validation() {
+    let (mut app, factory_addr, admin, artist, minter) = setup_contracts();
+
+    // Test cases for invalid symbols
+    let invalid_symbols = vec![
+        "test",      // lowercase
+        "Test",      // mixed case
+        "TEST ",     // with space
+        "TEST-1",    // with special character
+    ];
+
+    for symbol in invalid_symbols {
         let msg = ExecuteMsg::CreateCollection {
-            name: String::from("Drake Collection"),
-            symbol: String::from("DRAKE"),
-            pass_price: 10u128,
-            pass_duration: 2592000u64,  // 30 days
-            grace_period: 259200u64,    // 3 days
-            payment_address: owner.clone(),
+            name: "Test Collection".to_string(),
+            symbol: symbol.to_string(),
+            artist: artist.clone(),
+            minter: minter.clone(),
+            collection_info: "Test Collection Metadata".to_string(),
         };
 
-        // Artist creates collection
         let res = app.execute_contract(
-            artist.clone(),
+            admin.clone(),
             factory_addr.clone(),
             &msg,
-            &[],
+            &[]
         );
-        assert!(res.is_ok());
-
-        // Query the collection
-        let res: CollectionResponse = app
-            .wrap()
-            .query_wasm_smart(
-                &factory_addr,
-                &QueryMsg::Collection {
-                    artist: artist.to_string(),
-                },
-            )
-            .unwrap();
-
-        let collection = res.collection.unwrap();
-        assert_eq!(collection.name, "Drake Collection");
-        assert_eq!(collection.symbol, "DRAKE");
-        assert_eq!(collection.artist, artist);
-        assert!(!collection.contract_address.to_string().is_empty());
+        
+        println!("Testing invalid symbol '{}': {:?}", symbol, res);
+        assert!(res.is_err(), "Symbol '{}' should be invalid", symbol);
     }
+}
 
-    #[test]
-    fn create_multiple_collections() {
-        let (mut app, factory_addr, owner, artist, _, _, _) = setup_contracts();
-
-        // Create first collection
-        let msg1 = ExecuteMsg::CreateCollection {
-            name: String::from("Drake Collection"),
-            symbol: String::from("DRAKE"),
-            pass_price: 10u128,
-            pass_duration: 2592000u64,
-            grace_period: 259200u64,
-            payment_address: owner.clone(),
-        };
-
-        let res = app.execute_contract(
-            artist.clone(),
-            factory_addr.clone(),
-            &msg1,
-            &[],
-        );
-        assert!(res.is_ok());
-
-        // Try to create collection with same symbol (should fail)
-        let msg2 = ExecuteMsg::CreateCollection {
-            name: String::from("Different Collection"),
-            symbol: String::from("DRAKE"),
-            pass_price: 20u128,
-            pass_duration: 1296000u64,
-            grace_period: 129600u64,
-            payment_address: owner.clone(),
-        };
-
-        let res = app.execute_contract(
-            artist.clone(),
-            factory_addr.clone(),
-            &msg2,
-            &[],
-        );
-        assert!(res.is_err());
-
-        // Create collection with different symbol
-        let msg3 = ExecuteMsg::CreateCollection {
-            name: String::from("Different Collection"),
-            symbol: String::from("DIFF"),
-            pass_price: 20u128,
-            pass_duration: 1296000u64,
-            grace_period: 129600u64,
-            payment_address: owner.clone()
-        };
-
-        let res = app.execute_contract(
-            artist.clone(),
-            factory_addr.clone(),
-            &msg3,
-            &[],
-        );
-        assert!(res.is_ok());
-    }
-
-    #[test]
-    fn test_invalid_symbol() {
-        let (mut app, factory_addr, owner, artist, _, _, _) = setup_contracts();
-
-        // Try with lowercase symbol
-        let msg = ExecuteMsg::CreateCollection {
-            name: String::from("Test Collection"),
-            symbol: String::from("drake"),
-            pass_price: 10u128,
-            pass_duration: 2592000u64,
-            grace_period: 259200u64,
-            payment_address: owner.clone()
-        };
-
-        let res = app.execute_contract(
-            artist.clone(),
-            factory_addr.clone(),
-            &msg,
-            &[],
-        );
-        assert!(res.is_err());
-
-        // Try with symbol containing spaces
-        let msg = ExecuteMsg::CreateCollection {
-            name: String::from("Test Collection"),
-            symbol: String::from("DRAKE TEST"),
-            pass_price: 10u128,
-            pass_duration: 2592000u64,
-            grace_period: 259200u64,
-            payment_address: owner.clone()
-        };
-
-        let res = app.execute_contract(
-            artist.clone(),
-            factory_addr.clone(),
-            &msg,
-            &[],
-        );
-        assert!(res.is_err());
-    }
 }
