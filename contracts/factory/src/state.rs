@@ -11,6 +11,9 @@ pub struct Config {
     pub duration: u64,
     pub grace_period: u64,  
     pub payment_address: Addr,
+    //royalty 
+    pub house_percentage: u32,
+    pub artist_percentage: u32,
 }
 
 #[cw_serde]
@@ -22,6 +25,9 @@ pub struct Collection {
     pub created_at: u64,
     pub minter: Addr,
     pub collection_info: String,
+     // collection-specific royalty settings
+     pub house_percentage: u32,
+     pub artist_percentage: u32,
 }
 
 
@@ -34,6 +40,8 @@ impl Collection {
         contract_address: Addr,
         created_at: u64,
         collection_info: String,
+        house_percentage: u32,
+        artist_percentage: u32,
     ) -> Self {
         Self {
             name,
@@ -43,11 +51,20 @@ impl Collection {
             contract_address,
             created_at,
             collection_info,
+            house_percentage,
+            artist_percentage
         }
     }
 
     pub fn is_authorized(&self, addr: &Addr) -> bool {
         *addr == self.artist || *addr == self.minter
+    }
+
+    pub fn validate_royalties(&self) -> Result<(), ContractError> {
+        if self.house_percentage + self.artist_percentage != 100 {
+            return Err(ContractError::InvalidRoyalties { });
+        }
+        Ok(())
     }
 }
 
@@ -55,6 +72,11 @@ pub fn save_new_collection(
     storage: &mut dyn cosmwasm_std::Storage,
     collection: &Collection,
 ) -> Result<(), ContractError> {
+
+    
+       // Validate royalties
+      let _ = collection.validate_royalties();
+ 
     // Ensure the symbol is not already taken
     if SYMBOL_TAKEN.may_load(storage, collection.symbol.clone())?.unwrap_or(false) {
         return Err(ContractError::SymbolAlreadyTaken {});

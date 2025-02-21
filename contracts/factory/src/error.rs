@@ -18,6 +18,9 @@ pub enum ContractError {
 
     #[error("Invalid UTF-8")]
     InvalidSymbolB {},
+    
+    #[error("Invalid royalties")]
+    InvalidRoyalties {},
 
     #[error("Symbol is already taken")]
     SymbolAlreadyTaken {},

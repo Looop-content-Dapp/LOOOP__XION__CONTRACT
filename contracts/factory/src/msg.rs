@@ -9,6 +9,9 @@ pub struct InstantiateMsg {
     pub duration: u64,
     pub grace_period: u64,  
     pub payment_address: Addr,
+
+    pub house_percentage: u32,
+    pub artist_percentage: u32,
 }
 
 #[cw_serde]
@@ -22,6 +25,11 @@ pub enum ExecuteMsg {
     },
     UpdateNftCodeId {
         code_id: u64,
+    },
+
+    UpdateRoyalties {
+        house_percentage: u32,
+        artist_percentage: u32,
     },
 }
 
@@ -59,6 +67,9 @@ pub struct ConfigResponse {
     pub nft_code_id: u64,
     pub admin: String,
     pub total_collections: u64,
+
+    pub house_percentage: u32,
+    pub artist_percentage: u32,
 }
 
 #[cw_serde]
@@ -79,6 +90,8 @@ pub struct CollectionCreatedEvent {
     pub artist: Addr,
     pub minter: Addr,
     pub contract_address: Addr,
+    pub house_percentage: u32,
+    pub artist_percentage: u32,
 }
 
 #[cw_serde]
@@ -86,3 +99,4 @@ pub struct CollectionUpdatedEvent {
     pub symbol: String, 
     pub is_active: bool,
 }
+

@@ -30,6 +30,9 @@ if !symbol.chars().all(char::is_uppercase) {
     if SYMBOL_TAKEN.may_load(deps.storage, symbol.clone())?.unwrap_or(false) {
         return Err(ContractError::SymbolAlreadyTaken {});
     }
+
+    let house_royalty = config.house_percentage;
+    let artist_royalty = config.artist_percentage;
  
     let instantiate_msg = to_json_binary(&NftInstantiateMsg {
         name: name.clone(),
@@ -41,6 +44,8 @@ if !symbol.chars().all(char::is_uppercase) {
         grace_period: config.grace_period,
         payment_address: config.payment_address,
         artist: artist.clone(),
+        house_percentage : house_royalty.clone(),
+        artist_percentage: artist_royalty.clone()
     })?;
  
     let sub_msg = SubMsg::reply_on_success(
@@ -64,7 +69,8 @@ if !symbol.chars().all(char::is_uppercase) {
         Addr::unchecked(""),
         created_at,
         collection_info,
-        
+        house_royalty.clone(),
+        artist_royalty.clone()
     );
  
     save_new_collection(deps.storage, &collection)?;
@@ -75,6 +81,8 @@ if !symbol.chars().all(char::is_uppercase) {
         artist,
         minter,
         contract_address: Addr::unchecked(""),
+        house_percentage: house_royalty,
+        artist_percentage: artist_royalty
     };
  
     Ok(Response::new()
@@ -139,4 +147,34 @@ if !symbol.chars().all(char::is_uppercase) {
         .add_attribute("action", "collection_created")
         .add_attribute("symbol", found_symbol)
         .add_attribute("contract_address", contract_addr.to_string()))
+}
+
+
+pub fn update_royalties(
+    deps: DepsMut,
+    info: MessageInfo,
+    house_percentage: u32,
+    artist_percentage: u32,
+) -> Result<Response, ContractError> {
+    let mut config = CONFIG.load(deps.storage)?;
+    
+    // Only admin can update royalties
+    if info.sender != config.admin {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    // Validate percentages
+    if house_percentage + artist_percentage != 100 {
+        return Err(ContractError::InvalidRoyalties {});
+    }
+
+    // Update config
+    config.house_percentage = house_percentage;
+    config.artist_percentage = artist_percentage;
+    CONFIG.save(deps.storage, &config)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "update_default_royalties")
+        .add_attribute("house_percentage", house_percentage.to_string())
+        .add_attribute("artist_percentage", artist_percentage.to_string()))
 }

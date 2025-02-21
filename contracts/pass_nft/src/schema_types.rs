@@ -10,4 +10,10 @@ pub enum SchemaQueryMsg {
 
     #[returns(crate::msg::ConfigResponse)] 
     GetConfig {},
+
+    #[returns(crate::msg::ArtistInfoResponse)]
+    GetArtistInfo {},
+
+    #[returns(crate::msg::PassResponse)]
+    GetUserPass { symbol: String, owner: String },
 }

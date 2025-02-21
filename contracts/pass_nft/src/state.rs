@@ -5,7 +5,6 @@ use cw_storage_plus::{Item, Map};
 // Import Custom Message
 use crate::msg::PassMsg;
 
-
 // Define the main configuration item
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const TOKEN_ID_COUNTER: Item<u64> = Item::new("token_id_counter");
@@ -34,6 +33,9 @@ pub struct Config {
     pub pass_price: u128, 
     pub pass_duration: u64,
     pub grace_period: u64, 
+    //royalty code 
+    pub house_percentage: u32,
+    pub artist_percentage: u32,
     pub payment_address: Addr, 
 }
 

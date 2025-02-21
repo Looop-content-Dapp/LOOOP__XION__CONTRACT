@@ -15,6 +15,9 @@ pub struct InstantiateMsg {
     pub pass_duration: u64,
     pub grace_period: u64,
     pub payment_address: Addr,
+
+    pub house_percentage: u32,
+    pub artist_percentage: u32,
 }
 
 // Custom Pass messages extending the base contract
@@ -82,7 +85,9 @@ pub struct ConfigResponse {
     pub pass_price: u128, 
     pub pass_duration: u64,
     pub grace_period: u64, 
-    pub payment_address: Addr, 
+    pub payment_address: Addr,
+    pub house_percentage: u32,
+    pub artist_percentage: u32, 
 }
 
 #[cw_serde]

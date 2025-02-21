@@ -10,6 +10,8 @@ mod tests {
     const PASS_DURATION: u64 = 1200; // 20 minutes
     const GRACE_PERIOD: u64 = 300;   // 5 minutes
     const COLLECTION_SYMBOL: &str = "TEST";
+    const HOUSE_ROYALTY: u32 = 30;
+    const ARTIST_ROYALTY : u32 = 70; 
 
     fn contract_pass() -> Box<dyn Contract<Empty>> {
         let contract = ContractWrapper::new_with_empty(execute, instantiate, query);
@@ -52,6 +54,7 @@ mod tests {
         println!("Owner: {}", owner);
         println!("Users: {}, {}", user1, user2);
         println!("Payment Address: {}", payment_addr);
+        // println!("Artist Bal: {}", artist);
 
         // Upload and instantiate contract
         let contract_id = app.store_code(contract_pass());
@@ -68,7 +71,9 @@ mod tests {
                     pass_price: PASS_PRICE,
                     pass_duration: PASS_DURATION,
                     grace_period: GRACE_PERIOD,
-                    payment_address: payment_addr,
+                    payment_address: payment_addr.clone(),
+                    artist_percentage: ARTIST_ROYALTY,
+                    house_percentage: HOUSE_ROYALTY
                 },
                 &[],
                 "music-pass",
@@ -89,7 +94,7 @@ mod tests {
 
         // Print initial balances
         println!("\n=== Initial Balances ===");
-        for user in [&user1, &user2] {
+        for user in [&user1, &user2, &artist, &payment_addr] {
             let balance = app
                 .wrap()
                 .query_balance(user.clone(), "uxion")
@@ -99,67 +104,34 @@ mod tests {
 
         // Mint passes
         println!("\n=== Minting Passes ===");
-        let mint_users = vec![&user1, &user2];
 
-        for user in mint_users {
-            let msg = ExecuteMsg::Extension { 
-                msg: PassMsg::MintPass { 
-                    owner_address: user.to_string()
-                }
-            };
-            
-            let res = app.execute_contract(
-                user.clone(),
-                contract_addr.clone(),
-                &msg,
-                &[Coin::new(PASS_PRICE, "uxion")],
-            )
+        // User 1 mints first
+        println!("Attempting first mint for user1...");
+        let mint_msg_1 = ExecuteMsg::Extension { 
+            msg: PassMsg::MintPass { 
+                owner_address: user1.to_string()
+            }
+        };
+
+        let res1 = app.execute_contract(
+            user1.clone(),
+            contract_addr.clone(),
+            &mint_msg_1,
+            &[Coin::new(PASS_PRICE, "uxion")],
+        ).unwrap();
+
+        // Get token_id from response attributes for first mint
+        let token_id_1 = res1.events
+            .iter()
+            .flat_map(|e| &e.attributes)
+            .find(|attr| attr.key == "token_id")
+            .map(|attr| attr.value.clone())
             .unwrap();
 
-            // Get token_id from response attributes
-            let token_id = res.events
-                .iter()
-                .flat_map(|e| &e.attributes)
-                .find(|attr| attr.key == "token_id")
-                .map(|attr| attr.value.clone())
-                .unwrap();
+        println!("User1 minted pass {}", token_id_1);
 
-            println!("{} minted pass {}", user, token_id);
-
-            // Query pass details after minting
-            let pass_details: PassResponse = app
-                .wrap()
-                .query_wasm_smart(
-                    contract_addr.clone(),
-                    &QueryMsg::Extension { 
-                        msg: PassQuery::GetUserPass { 
-                            symbol: COLLECTION_SYMBOL.to_string(),
-                            owner: user.to_string()
-                        }
-                    },
-                )
-                .unwrap();
-            println!("Pass details for {}: {:?}", user, pass_details);
-
-            // Also check validity
-            let validity: ValidityResponse = app
-                .wrap()
-                .query_wasm_smart(
-                    contract_addr.clone(),
-                    &QueryMsg::Extension { 
-                        msg: PassQuery::CheckValidity { 
-                            token_id: token_id.clone()
-                        }
-                    },
-                )
-                .unwrap();
-            println!("Pass {} validity: {:?}", token_id, validity);
-        }
-
-        // Test pass renewal
-        println!("\n=== Testing Pass Renewal ===");
-        // Query user1's pass first
-        let user1_pass: PassResponse = app
+        // Query first pass details
+        let pass_details_1: PassResponse = app
             .wrap()
             .query_wasm_smart(
                 contract_addr.clone(),
@@ -171,31 +143,49 @@ mod tests {
                 },
             )
             .unwrap();
+        println!("Pass details for user1: {:?}", pass_details_1);
 
-        let msg = ExecuteMsg::Extension { 
-            msg: PassMsg::RenewPass { 
-                token_id: user1_pass.token_id.clone()
+        // Check validity for first pass
+        let validity_1: ValidityResponse = app
+            .wrap()
+            .query_wasm_smart(
+                contract_addr.clone(),
+                &QueryMsg::Extension { 
+                    msg: PassQuery::CheckValidity { 
+                        token_id: token_id_1.clone()
+                    }
+                },
+            )
+            .unwrap();
+        println!("Pass {} validity: {:?}", token_id_1, validity_1);
+
+        // User 2 mints second
+        println!("\nAttempting second mint for user2...");
+        let mint_msg_2 = ExecuteMsg::Extension { 
+            msg: PassMsg::MintPass { 
+                owner_address: user2.to_string()
             }
         };
-        
-        app.execute_contract(
-            user1.clone(),
+
+        let res2 = app.execute_contract(
+            user2.clone(),
             contract_addr.clone(),
-            &msg,
+            &mint_msg_2,
             &[Coin::new(PASS_PRICE, "uxion")],
-        )
-        .unwrap();
-        println!("User1 renewed pass {}", user1_pass.token_id);
+        ).unwrap();
 
-        // Test burning expired pass
-        println!("\n=== Testing Pass Burning ===");
-        // Move time forward past expiration and grace period
-        app.update_block(|block| {
-            block.time = block.time.plus_seconds(PASS_DURATION + GRACE_PERIOD + 1);
-        });
+        // Get token_id from response attributes for second mint
+        let token_id_2 = res2.events
+            .iter()
+            .flat_map(|e| &e.attributes)
+            .find(|attr| attr.key == "token_id")
+            .map(|attr| attr.value.clone())
+            .unwrap();
 
-        // Get user2's pass
-        let user2_pass: PassResponse = app
+        println!("User2 minted pass {}", token_id_2);
+
+        // Query second pass details
+        let pass_details_2: PassResponse = app
             .wrap()
             .query_wasm_smart(
                 contract_addr.clone(),
@@ -207,10 +197,49 @@ mod tests {
                 },
             )
             .unwrap();
+        println!("Pass details for user2: {:?}", pass_details_2);
+
+        // Check validity for second pass
+        let validity_2: ValidityResponse = app
+            .wrap()
+            .query_wasm_smart(
+                contract_addr.clone(),
+                &QueryMsg::Extension { 
+                    msg: PassQuery::CheckValidity { 
+                        token_id: token_id_2.clone()
+                    }
+                },
+            )
+            .unwrap();
+        println!("Pass {} validity: {:?}", token_id_2, validity_2);
+
+        // Test pass renewal
+        println!("\n=== Testing Pass Renewal ===");
+        let msg = ExecuteMsg::Extension { 
+            msg: PassMsg::RenewPass { 
+                token_id: token_id_1.clone()
+            }
+        };
+        
+        app.execute_contract(
+            user1.clone(),
+            contract_addr.clone(),
+            &msg,
+            &[Coin::new(PASS_PRICE, "uxion")],
+        )
+        .unwrap();
+        println!("User1 renewed pass {}", token_id_1);
+
+        // Test burning expired pass
+        println!("\n=== Testing Pass Burning ===");
+        // Move time forward past expiration and grace period
+        app.update_block(|block| {
+            block.time = block.time.plus_seconds(PASS_DURATION + GRACE_PERIOD + 1);
+        });
 
         let msg = ExecuteMsg::Extension { 
             msg: PassMsg::BurnExpiredPass { 
-                token_id: user2_pass.token_id.clone()
+                token_id: token_id_2.clone()
             }
         };
         
@@ -221,16 +250,17 @@ mod tests {
             &[],
         )
         .unwrap();
-        println!("User2 burned pass {}", user2_pass.token_id);
+        println!("User2 burned pass {}", token_id_2);
 
         // Check final balances
+        // Print initial balances
         println!("\n=== Final Balances ===");
-        for user in [&user1, &user2] {
+        for user in [&user1, &user2, &artist, &payment_addr] {
             let balance = app
                 .wrap()
                 .query_balance(user.clone(), "uxion")
                 .unwrap();
-            println!("Final balance of {}: {}", user, balance.amount);
+            println!("Balance of {}: {}", user, balance.amount);
         }
     }
 }

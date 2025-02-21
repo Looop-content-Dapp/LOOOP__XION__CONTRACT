@@ -29,6 +29,8 @@ mod tests {
         let artist = Addr::unchecked("artist");
         let minter = Addr::unchecked("minter");
         let payment_addr = Addr::unchecked("payment");
+        let house_percentage: u32 = 30;
+        let artist_percentage: u32 = 70;
 
         // First store the NFT contract code
         let nft_code_id = app.store_code(nft_contract());
@@ -45,6 +47,8 @@ mod tests {
                     duration: 2592000,
                     grace_period: 259200,
                     payment_address: payment_addr.clone(),
+                    artist_percentage,
+                    house_percentage
                 },
                 &[],
                 "factory",

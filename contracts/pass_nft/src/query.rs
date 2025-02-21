@@ -103,5 +103,8 @@ pub fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         pass_duration: config.pass_duration,
         grace_period: config.grace_period,
         payment_address: config.payment_address,
+        house_percentage: config.house_percentage,
+        artist_percentage: config.artist_percentage
+        
     })
 }

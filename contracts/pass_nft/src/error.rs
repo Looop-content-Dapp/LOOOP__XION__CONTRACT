@@ -29,6 +29,9 @@ pub enum ContractError {
     // Pass status errors
     #[error("Pass is not expired yet")]
     PassStillValid {},
+    
+    #[error("Invalid royalties")]
+    InvalidRoyalties {},
 
     #[error("Pass has expired and grace period has ended")]
     PassExpiredAndGracePeriodEnded {},

@@ -7,7 +7,7 @@ use cosmwasm_std::{
  use crate::error::ContractError;
  use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
  use crate::state::{Config, CONFIG, COLLECTION_COUNT};
- use crate::execute::{create_collection, update_nft_code_id, reply_collection_created};
+ use crate::execute::{create_collection, update_nft_code_id, reply_collection_created, update_royalties};
  use crate::query::{query_config, query_collection, query_all_collections, query_artist_collections,query_is_symbol_available};
  
  const CONTRACT_NAME: &str = "crates.io:loop-factory";
@@ -21,6 +21,10 @@ use cosmwasm_std::{
     msg: InstantiateMsg,
  ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    if msg.house_percentage + msg.artist_percentage != 100 {
+        return Err(ContractError::InvalidRoyalties {});
+    }
  
     let config = Config {
         admin: info.sender,
@@ -29,6 +33,8 @@ use cosmwasm_std::{
         payment_address: msg.payment_address,
         price: msg.price,
         nft_code_id: msg.nft_code_id,
+        house_percentage: msg.house_percentage,
+        artist_percentage: msg.artist_percentage
         
     };
     CONFIG.save(deps.storage, &config)?;
@@ -58,6 +64,9 @@ use cosmwasm_std::{
         
         ExecuteMsg::UpdateNftCodeId { code_id } => 
             update_nft_code_id(deps, info, code_id),
+
+        ExecuteMsg::UpdateRoyalties { house_percentage, artist_percentage } => 
+            update_royalties(deps, info, house_percentage, artist_percentage)
     }
  }
 

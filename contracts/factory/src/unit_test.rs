@@ -17,7 +17,9 @@ mod tests {
     const NFT_CODE_ID: u64 = 123;
     const PASS_PRICE: u128 = 10;
     const PASS_DURATION: u64 = 2592000;   // 30 days
-    const GRACE_PERIOD: u64 = 259200;     // 3 days
+    const GRACE_PERIOD: u64 = 259200; 
+    const HOUSE_ROYALTY: u32 = 30;
+    const ARTIST_ROYALTY : u32 = 70;    
 
     // Helper function to instantiate the contract
     fn setup_contract(deps: DepsMut) -> Response {
@@ -27,6 +29,8 @@ mod tests {
             duration: PASS_DURATION,
             grace_period: GRACE_PERIOD,
             payment_address: Addr::unchecked(OWNER),
+            house_percentage: HOUSE_ROYALTY,
+            artist_percentage: ARTIST_ROYALTY
         };
         
         let info = mock_info(OWNER, &[]);

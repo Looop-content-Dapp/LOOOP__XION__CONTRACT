@@ -32,6 +32,10 @@ pub fn instantiate(
     let collection_name = msg.name;
     let collection_symbol = msg.symbol;
 
+    if msg.house_percentage + msg.artist_percentage != 100 {
+        return Err(ContractError::InvalidRoyalties {});
+    }
+
     let config = Config {
         name: collection_name.clone(),
         symbol: collection_symbol.clone(),
@@ -42,6 +46,8 @@ pub fn instantiate(
         grace_period: msg.grace_period,
         payment_address: payment_address.clone(),
         artist: artist.clone(),
+        house_percentage: msg.house_percentage,
+        artist_percentage: msg.artist_percentage,
         
     };
 
@@ -67,7 +73,9 @@ pub fn instantiate(
         .add_attribute("collection_name", collection_name)
         .add_attribute("collection_symbol", collection_symbol)
         .add_attribute("artist", artist)
-        .add_attribute("payment_address", payment_address))
+        .add_attribute("payment_address", payment_address)
+        .add_attribute("house_percentage", msg.house_percentage.to_string())
+        .add_attribute("artist_percentage", msg.artist_percentage.to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -80,7 +88,9 @@ pub fn execute(
     match msg {
         ExecuteMsg::Extension { msg } => match msg {
             PassMsg::MintPass { owner_address }
-             => mint_pass(deps, env, info, owner_address),
+             => {
+                deps.api.debug("Executing mint_pass");
+                mint_pass(deps, env, info, owner_address)},
             PassMsg::RenewPass { token_id } => renew_pass(deps, env, info, token_id),
             PassMsg::BurnExpiredPass { token_id } => burn_expired_pass(deps, env, info, token_id),
         },

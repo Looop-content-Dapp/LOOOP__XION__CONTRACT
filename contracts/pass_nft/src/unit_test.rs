@@ -22,6 +22,8 @@ mod tests {
     const PAYMENT_ADDR: &str = "payment_addr";
     const COLLECTION_NAME: &str = "Test Pass";
     const COLLECTION_SYMBOL: &str = "TEST";
+    const HOUSE_ROYALTY: u32 = 30;
+    const ARTIST_ROYALTY : u32 = 70; 
 
     // Helper function to setup contract
     fn setup_contract() -> OwnedDeps<MockStorage, MockApi, MockQuerier> {
@@ -41,6 +43,8 @@ mod tests {
             pass_duration: PASS_DURATION,
             grace_period: GRACE_PERIOD,
             payment_address,
+            house_percentage : HOUSE_ROYALTY,
+            artist_percentage: ARTIST_ROYALTY
         };
 
         let info = mock_info(ARTIST, &[]);
@@ -68,6 +72,8 @@ mod tests {
             pass_duration: PASS_DURATION,
             grace_period: GRACE_PERIOD,
             payment_address: payment_address.clone(),
+            house_percentage:HOUSE_ROYALTY,
+            artist_percentage: ARTIST_ROYALTY
         };
 
         let info = mock_info(ARTIST, &[]);

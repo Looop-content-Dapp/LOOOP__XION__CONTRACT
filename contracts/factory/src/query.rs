@@ -9,6 +9,8 @@ pub fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         nft_code_id: config.nft_code_id,
         admin: config.admin.to_string(),
         total_collections: COLLECTION_COUNT.load(deps.storage)?,
+        house_percentage: config.house_percentage,
+        artist_percentage: config.artist_percentage
     })
 }
 
